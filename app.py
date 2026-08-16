@@ -1,7 +1,16 @@
+## pip install dependencies
+# pip install pandas
+# pip install yfinance
+# pip install dotenv
+# pip install transformers
+# pip install torch
+# pip install joblib
+
 # import libraries (pip install dependencies)
 import os
 import requests
 import pandas as pd
+from pandas.tseries.offsets import BDay
 import numpy as np
 import yfinance as yf
 from datetime import datetime
@@ -14,17 +23,20 @@ import joblib
 
 load_dotenv()
 api_key = os.getenv("api_key")
+last_trading_day = (pd.Timestamp.now().normalize() - BDay(1)).strftime('%Y-%m-%d')
+url = f"https://api.biopharmcatalyst.com/api/user/v1/historical-catalysts"
 
-url = f"https://api.biopharmcatalyst.com/api/user/v1/historical-catalysts?key={api_key}"
+params = {
+    "key": api_key,
+    "start_date": last_trading_day,
+    "end_date": last_trading_day
+}
 
-response = requests.get(url)
+response = requests.get(url, params = params)
 data = response.json()
 
 data = pd.DataFrame(data).dropna().reset_index(drop=True)
 
-today = pd.Timestamp.now().normalize()
-data['date'] = pd.to_datetime(data['date'])
-data = data[data['date'].dt.normalize() == today]
 if data.empty:
     print("No catalysts for today")
     exit(0)
@@ -59,7 +71,7 @@ data = pd.merge(
 # updated market data
 market_data = []    
 for ticker in data['company_ticker'].unique():
-    hist = yf.Ticker(ticker).history(start = today - pd.DateOffset(days=150), end = today + pd.DateOffset(days=1)).reset_index()
+    hist = yf.Ticker(ticker).history(start = pd.to_datetime(last_trading_day) - pd.DateOffset(days=150), end = pd.to_datetime(last_trading_day)).reset_index()
     hist['Ticker'] = ticker
     hist['Date'] = pd.to_datetime(hist['Date'], utc = True).dt.tz_localize(None).dt.normalize()
     keptColumns = ['Date', 'Ticker', 'Open', 'Close', 'High', 'Low', 'Volume']
@@ -67,32 +79,42 @@ for ticker in data['company_ticker'].unique():
     market_data.append(hist)
 market_data_df = pd.concat(market_data, ignore_index=True)
 
-nbi = yf.Ticker('^NBI').history(start = today - pd.DateOffset(days=150), end = today + pd.DateOffset(days=1)).reset_index()
+nbi = yf.Ticker('^NBI').history(start = pd.to_datetime(last_trading_day) - pd.DateOffset(days=150), end = pd.to_datetime(last_trading_day)).reset_index()
 nbi = nbi[['Date', 'Close']].rename(columns= {'Close':'NBI'})
 nbi['Date'] = pd.to_datetime(nbi['Date'], utc = True).dt.tz_localize(None).dt.normalize()
 market_data_df = pd.merge(market_data_df, nbi, on= 'Date', how='left')
+
 
 # add 30d/60d trends
 def trend(market_data_df, ticker, eventDate):
     df = (market_data_df[market_data_df['Ticker'] == ticker].sort_values('Date').reset_index(drop=True))
 
-    if df.empty:
-        raise ValueError(
-            f"No trend data found for this stock: {ticker}"
-        )
-
     df = df[df['Date'] <= pd.to_datetime(eventDate).normalize()]
+
+    if df.empty:
+        return {
+            'Stock_Trend_30d': np.nan,
+            'Stock_Trend_60d': np.nan,
+            'NBI_Trend_30d': np.nan,
+            'NBI_Trend_60d': np.nan
+    }
+
      
     # extract stock values at specified timepoints
-    s0, s30, s60 = df.iloc[-1]['Close'], df.iloc[-31]['Close'], df.iloc[-61]['Close']
-    n0, n30, n60 = df.iloc[-1].get('NBI', np.nan), df.iloc[-31].get('NBI', np.nan), df.iloc[-61].get('NBI', np.nan)
+    n=len(df)
+    s0 = df.iloc[-1]['Close'] if n>=1 else np.nan
+    s30 = df.iloc[-31]['Close'] if n>=31 else np.nan
+    s60 = df.iloc[-61]['Close'] if n>=61 else np.nan
+    n0 = df.iloc[-1].get('NBI', np.nan) if n>=1 else np.nan
+    n30 = df.iloc[-31].get('NBI', np.nan) if n>=31 else np.nan
+    n60 = df.iloc[-61].get('NBI', np.nan) if n>=61 else np.nan
 
     # calculate trends
     return {
-        'Stock_Trend_30d': (s0-s30) / s30,
-        'Stock_Trend_60d': (s0-s60) / s60,
-        'NBI_Trend_30d': (n0-n30) / n30,
-        'NBI_Trend_60d': (n0-n60) / n60,
+        'Stock_Trend_30d': (s0-s30) / s30 if pd.notna(s30) and s30!=0 else np.nan,
+        'Stock_Trend_60d': (s0-s60) / s60 if pd.notna(s60) and s60!=0 else np.nan,
+        'NBI_Trend_30d': (n0-n30) / n30 if pd.notna(n30) and n30!=0 else np.nan,
+        'NBI_Trend_60d': (n0-n60) / n60 if pd.notna(n60) and n60!=0 else np.nan
     }
 
 trends_res = [trend(market_data_df, ticker, date)
