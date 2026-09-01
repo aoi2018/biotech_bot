@@ -1,3 +1,6 @@
+## run from the terminal
+# brew install libomp
+
 ## pip install dependencies
 # pip install pandas
 # pip install yfinance
@@ -24,26 +27,32 @@ import joblib
 
 load_dotenv()
 api_key = os.getenv("api_key")
-last_trading_day = (pd.Timestamp.now().normalize() - BDay(1)).strftime('%Y-%m-%d')
+# last_trading_day = (pd.Timestamp.now().normalize() - BDay(5)).strftime('%Y-%m-%d')
+last_trading_day = (pd.offsets.BDay().rollback(pd.Timestamp.now().normalize() - pd.Timedelta(days = 1))).strftime('%Y-%m-%d')
+
+print(f"Last trading day: {last_trading_day}")
+
 url = f"https://api.biopharmcatalyst.com/api/user/v1/historical-catalysts"
 
 params = {
-    "key": api_key,
-    "start_date": last_trading_day,
-    "end_date": last_trading_day
+    "key": api_key
 }
 
 response = requests.get(url, params = params)
-data = response.json()
+res = response.json()
 
-data = pd.DataFrame(data).dropna().reset_index(drop=True)
+df = pd.DataFrame(res)
+
+data = df[df["date"] == last_trading_day].copy()
 
 if data.empty:
-    print("No catalysts for today")
+    print("No catalysts for last trading day")
     exit(0)
 
 data = data.drop_duplicates(
     subset=['company_ticker', 'date'], keep = 'last').reset_index(drop=True)
+
+print(f"Found {len(data)} catalysts for {last_trading_day}")
 
 # calculate polarity
 finbert = pipeline(task = "text-classification",
@@ -128,8 +137,7 @@ data = pd.concat([data, trends_df], axis = 1)
 models = joblib.load('xgb_models_1_to_20.joblib')
 
 # labels
-features = ['stage', 
-            'polarity',
+features = ['polarity',
             'drug_count',
             'Total Revenue', 
             'Operating Revenue', 
@@ -147,9 +155,14 @@ for c in features:
 
 # new data
 X_new = data[features].copy()
-X_new['stage'] = X_new['stage'].astype("category")
+# X_new['stage'] = X_new['stage'].astype("category")
 X_new['isDelisted'] = X_new['isDelisted'].astype(int)
 
 # run regressor predictions
 preds_df = pd.DataFrame({f"NCAR{i}": model.predict(X_new) for i, model in enumerate(models.values(), start=1)})
 data = pd.concat([data, preds_df], axis =1)
+
+if (len(data) >=5):
+    data["NCAR20_quintiles"] = data["NCAR20"].transform(lambda x:pd.qcut(x, q=5, labels = [1,2,3,4,5]))
+else: 
+    print("Less than 5 catalysts for the last trading day")
