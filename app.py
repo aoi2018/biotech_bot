@@ -5,6 +5,7 @@
 # pip install transformers
 # pip install torch
 # pip install joblib
+# pip install xgboost
 
 # import libraries (pip install dependencies)
 import os
@@ -44,8 +45,6 @@ if data.empty:
 data = data.drop_duplicates(
     subset=['company_ticker', 'date'], keep = 'last').reset_index(drop=True)
 
-model_load = joblib.load("xgb_model.joblib")
-
 # calculate polarity
 finbert = pipeline(task = "text-classification",
                    model = "ProsusAI/finbert",
@@ -84,7 +83,6 @@ nbi = nbi[['Date', 'Close']].rename(columns= {'Close':'NBI'})
 nbi['Date'] = pd.to_datetime(nbi['Date'], utc = True).dt.tz_localize(None).dt.normalize()
 market_data_df = pd.merge(market_data_df, nbi, on= 'Date', how='left')
 
-
 # add 30d/60d trends
 def trend(market_data_df, ticker, eventDate):
     df = (market_data_df[market_data_df['Ticker'] == ticker].sort_values('Date').reset_index(drop=True))
@@ -96,7 +94,8 @@ def trend(market_data_df, ticker, eventDate):
             'Stock_Trend_30d': np.nan,
             'Stock_Trend_60d': np.nan,
             'NBI_Trend_30d': np.nan,
-            'NBI_Trend_60d': np.nan
+            'NBI_Trend_60d': np.nan,
+            'isDelisted': 1
     }
 
      
@@ -114,7 +113,8 @@ def trend(market_data_df, ticker, eventDate):
         'Stock_Trend_30d': (s0-s30) / s30 if pd.notna(s30) and s30!=0 else np.nan,
         'Stock_Trend_60d': (s0-s60) / s60 if pd.notna(s60) and s60!=0 else np.nan,
         'NBI_Trend_30d': (n0-n30) / n30 if pd.notna(n30) and n30!=0 else np.nan,
-        'NBI_Trend_60d': (n0-n60) / n60 if pd.notna(n60) and n60!=0 else np.nan
+        'NBI_Trend_60d': (n0-n60) / n60 if pd.notna(n60) and n60!=0 else np.nan,
+        'isDelisted': pd.isna(s30) or pd.isna(s60)
     }
 
 trends_res = [trend(market_data_df, ticker, date)
@@ -123,6 +123,9 @@ trends_res = [trend(market_data_df, ticker, date)
 trends_df = pd.DataFrame([res if isinstance(res, dict) else {} for res in trends_res], index = data.index)
 
 data = pd.concat([data, trends_df], axis = 1)
+
+# upload models
+models = joblib.load('xgb_models_1_to_20.joblib')
 
 # labels
 features = ['stage', 
@@ -135,7 +138,8 @@ features = ['stage',
             'Stock_Trend_30d', 
             'Stock_Trend_60d',
             'NBI_Trend_30d', 
-            'NBI_Trend_60d']
+            'NBI_Trend_60d',
+            'isDelisted']
 
 for c in features:
     if data[c].dtype == 'object':
@@ -143,6 +147,9 @@ for c in features:
 
 # new data
 X_new = data[features].copy()
+X_new['stage'] = X_new['stage'].astype("category")
+X_new['isDelisted'] = X_new['isDelisted'].astype(int)
 
 # run regressor predictions
-pred = model_load.predict(X_new)
+preds_df = pd.DataFrame({f"NCAR{i}": model.predict(X_new) for i, model in enumerate(models.values(), start=1)})
+data = pd.concat([data, preds_df], axis =1)
