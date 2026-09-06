@@ -33,7 +33,7 @@
 {% block content %}
 <div class="container mt-5 table-responsive">
     {% if tableData and tableData|length>0 %}
-        <table class = "table table_striped">
+        <table class = "table table-striped">
             <thead>
                 <tr>
                     {% for header in tableData[0].keys() %}
@@ -41,9 +41,9 @@
                     {% endfor %}
                 </tr>
             </thead>
-            <tbody>
+            <tbody id='tableBody'>
                 {% for row in tableData%}
-                    <tr>
+                    <tr onclick="getTicker('{{row.Ticker}}')">
                         {% for cell in row.values() %}
                             <td>{{ cell }}</td>
                         {% endfor %}

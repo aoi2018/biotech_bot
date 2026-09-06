@@ -11,6 +11,7 @@
 # pip install xgboost
 # pip install Flask
 # pip install flask_bootstrap
+# pip install matplotlib
 
 # import libraries (pip install dependencies)
 from flask import Flask, request, jsonify, render_template
@@ -26,16 +27,31 @@ from dotenv import load_dotenv
 from transformers import pipeline
 import torch
 import joblib
+import io
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import base64
+
 
 app=Flask(__name__)
 Bootstrap(app)
+
+clicked_ticker = None
+
+@app.route('/endpoint', methods=['POST'])
+def endpoint():
+    global clicked_ticker
+    t = request.get_json() or {}
+    clicked_ticker  = t.get('clicked_ticker', '')
+    return clicked_ticker
 
 # new day catalyst import
 
 load_dotenv()
 api_key = os.getenv("api_key")
 # last_trading_day = (pd.Timestamp.now().normalize() - BDay(5)).strftime('%Y-%m-%d')
-last_trading_day = (pd.offsets.BDay().rollback(pd.Timestamp.now().normalize() - pd.Timedelta(days = 1))).strftime('%Y-%m-%d')
+last_trading_day = (pd.offsets.BDay().rollback(pd.Timestamp.now().normalize() - pd.Timedelta(days = 4))).strftime('%Y-%m-%d')
 
 print(f"Last trading day: {last_trading_day}")
 
@@ -170,8 +186,9 @@ X_new['isDelisted'] = X_new['isDelisted'].astype(int)
 preds_df = pd.DataFrame({f"NCAR{i}": model.predict(X_new) for i, model in enumerate(models.values(), start=1)})
 data = pd.concat([data, preds_df], axis =1)
 
+# quintile 1 is the highest
 if (len(data) >=5):
-    data["NCAR20_quintiles"] = data["NCAR20"].transform(lambda x:pd.qcut(x, q=5, labels = [1,2,3,4,5]))
+    data["NCAR20_quintiles"] = data["NCAR20"].transform(lambda x:pd.qcut(x, q=5, labels = [5,4,3,2,1]))
 else: 
     print("Less than 5 catalysts for the last trading day")
 
@@ -180,6 +197,52 @@ data_rows = data.to_dict(orient = "records")
 # print(data)
 # print(data_rows)
 
+# generate NCAR chart
+def generate_chart(clicked_ticker, df):
+    if not clicked_ticker:
+        return None
+    df_ticker = df[df['company_ticker'] == clicked_ticker]
+    if df_ticker.empty:
+        return None
+
+    ncar_columns = [f"NCAR{i}"for i in range(1,21)]
+    y = df_ticker[ncar_columns].iloc[0].values
+    x = list(range(1,21))
+
+    fig, ax = plt.subplots(figsize = (15,10))
+    ax.plot(x,y)
+    ax.set_xticks(x)
+    ax.set_title("Forcasted Daily NCAR Trends", fontsize = 20)
+    ax.set_xlabel("Day After Catalyst", fontsize = 20)
+    ax.set_ylabel("Normalized Cumulative Abnormal Return (NCAR)", fontsize = 20)
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png',bbox_inches = 'tight')
+    buf.seek(0)
+    chart = base64.b64encode(buf.getvalue()).decode('utf8')
+    plt.close(fig)
+    return chart
+    return None
+
+# generate indicator table info
+def display_indicators(clicked_ticker):
+    if not clicked_ticker:
+        return []
+    for item in data_rows:
+        if item.get("company_ticker") == clicked_ticker:
+            date = item.get('date', 'N/A')
+            ticker = item.get('company_ticker', 'N/A')
+            ncar20 = item.get('NCAR20')
+            ncar20_quintile = item.get('NCAR20_quintiles', 'N/A')
+            lines = [{
+                    "Catalyst Date": date, 
+                    "Ticker": ticker, 
+                    "NCAR20": round(ncar20,4) if ncar20 is not None else 'N/A', 
+                    "NCAR20 Quintile": ncar20_quintile
+            }]
+            return lines
+    return []
+
+# generate catalyst table info
 def display_catalysts():
     table_rows = []
     for item in data_rows:
@@ -194,7 +257,9 @@ def display_catalysts():
 
 @app.route("/analytics.html")    
 def analytics():
-    return render_template('analytics.html')
+    chart = generate_chart(clicked_ticker, data) if clicked_ticker else None
+    tableAnalytics = display_indicators(clicked_ticker)
+    return render_template('analytics.html', chart = chart, tableAnalytics = tableAnalytics)
 
 @app.route("/recommendations.html")    
 def recommendations():

@@ -31,6 +31,40 @@
 {% endblock %}
 
 {% block content %}
+<div class="container mt-5">
+    <h1>Analytics</h1>
+    <div class="row">
+        <div class="col-md-6">
+            <h3>20-Day NCAR Trend</h3>
+            <img src ="data:image/png;base64, {{ chart }}" alt = "NCAR Trend" class="img-responsive">
+        </div>
+            <div class="col-md-6">
+            <h3>Indicators</h3>
+            <div class="table-responsive">
+            {% if tableAnalytics and tableAnalytics|length>0 %}
+                <table class = "table table-striped">
+                    <thead>
+                        <tr>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in tableAnalytics %}  
+                            {% for key, value in row.items() %}
+                                <tr>
+                                    <th scope = "row">{{ key }}</th>
+                                    <td>{{ value }}</td>
+                                </tr>
+                            {% endfor %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>No data available</p>
+            {% endif %}
+</div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}
 
