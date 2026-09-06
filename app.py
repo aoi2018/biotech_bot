@@ -98,6 +98,7 @@ nbi = yf.Ticker('^NBI').history(start = pd.to_datetime(last_trading_day) - pd.Da
 nbi = nbi[['Date', 'Close']].rename(columns= {'Close':'NBI'})
 nbi['Date'] = pd.to_datetime(nbi['Date'], utc = True).dt.tz_localize(None).dt.normalize()
 market_data_df = pd.merge(market_data_df, nbi, on= 'Date', how='left')
+ 
 
 # add 30d/60d trends
 def trend(market_data_df, ticker, eventDate):
@@ -174,6 +175,23 @@ if (len(data) >=5):
 else: 
     print("Less than 5 catalysts for the last trading day")
 
+data_rows = data.to_dict(orient = "records")
+
+# print(data)
+# print(data_rows)
+
+def display_catalysts():
+    table_rows = []
+    for item in data_rows:
+        row = {
+            "Catalyst": item.get('catalyst', 'N/A'),
+            "Date": item.get('date', 'N/A'),
+            "Ticker": item.get('company_ticker', 'N/A'),
+            "NCAR20_quintile": item.get('NCAR20_quintiles', 'Too few catalysts'),
+        }
+        table_rows.append(row)
+    return(table_rows)
+
 @app.route("/analytics.html")    
 def analytics():
     return render_template('analytics.html')
@@ -184,7 +202,8 @@ def recommendations():
 
 @app.route("/")
 def index():
-    return render_template('index.html')
+    tableData = display_catalysts()
+    return render_template('index.html', tableData = tableData)
 
 if __name__ == '__main__':
     app.run(debug=True, use_reloader = False)
