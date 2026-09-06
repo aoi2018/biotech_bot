@@ -9,8 +9,12 @@
 # pip install torch
 # pip install joblib
 # pip install xgboost
+# pip install Flask
+# pip install flask_bootstrap
 
 # import libraries (pip install dependencies)
+from flask import Flask, request, jsonify, render_template
+from flask_bootstrap import Bootstrap
 import os
 import requests
 import pandas as pd
@@ -22,6 +26,9 @@ from dotenv import load_dotenv
 from transformers import pipeline
 import torch
 import joblib
+
+app=Flask(__name__)
+Bootstrap(app)
 
 # new day catalyst import
 
@@ -166,3 +173,18 @@ if (len(data) >=5):
     data["NCAR20_quintiles"] = data["NCAR20"].transform(lambda x:pd.qcut(x, q=5, labels = [1,2,3,4,5]))
 else: 
     print("Less than 5 catalysts for the last trading day")
+
+@app.route("/analytics.html")    
+def analytics():
+    return render_template('analytics.html')
+
+@app.route("/recommendations.html")    
+def recommendations():
+    return render_template('recommendations.html')
+
+@app.route("/")
+def index():
+    return render_template('index.html')
+
+if __name__ == '__main__':
+    app.run(debug=True, use_reloader = False)
