@@ -31,9 +31,22 @@
 {% endblock %}
 
 {% block content %}
-
+<div class="container mt-5">
+    <h1>Recommendations</h1>
+    <div id="recommendations"></div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 {{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    var markdownText = '{{ text|tojson|safe }}';
+    target = document.getElementById("recommendations");
+    if (markdownText) {
+        target.innerHTML = marked.parse(markdownText);
+    } else {
+        target.innerHTML = "<p>No analysis available.</p>"
+    }
+</script>
 {% endblock %}

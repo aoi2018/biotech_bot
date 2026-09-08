@@ -12,6 +12,9 @@
 # pip install Flask
 # pip install flask_bootstrap
 # pip install matplotlib
+# pip install ollama
+# ollama pull llama3.2
+
 
 # import libraries (pip install dependencies)
 from flask import Flask, request, jsonify, render_template
@@ -32,6 +35,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import base64
+import ollama
+import json
 
 
 app=Flask(__name__)
@@ -51,7 +56,7 @@ def endpoint():
 load_dotenv()
 api_key = os.getenv("api_key")
 # last_trading_day = (pd.Timestamp.now().normalize() - BDay(5)).strftime('%Y-%m-%d')
-last_trading_day = (pd.offsets.BDay().rollback(pd.Timestamp.now().normalize() - pd.Timedelta(days = 4))).strftime('%Y-%m-%d')
+last_trading_day = (pd.offsets.BDay().rollback(pd.Timestamp.now().normalize() - pd.Timedelta(days = 5))).strftime('%Y-%m-%d')
 
 print(f"Last trading day: {last_trading_day}")
 
@@ -194,8 +199,56 @@ else:
 
 data_rows = data.to_dict(orient = "records")
 
-# print(data)
+print(data.columns)
 # print(data_rows)
+
+# local LLM function
+def genAIanalysis(clicked_ticker, data):
+    clicked_ticker_data = data[data['company_ticker'] == clicked_ticker].to_dict(orient = 'records')[0]
+    company_name = clicked_ticker_data.get('company_name')
+
+    prompt =  f"""
+        You are an expert biotech investment analyst. Analyze this data for {company_name}:
+        1. Financial data: 
+        
+        {json.dumps({
+            'Total Revenue': clicked_ticker_data.get('Total Revenue'), 
+            'Operating Revenue': clicked_ticker_data.get('Operating Revenue'),
+            'Cash And Cash Equivalents':clicked_ticker_data.get('Cash And Cash Equivalents'),
+            'Total Debt': clicked_ticker_data.get('Total Debt'), 
+            'Capital Expenditure': clicked_ticker_data.get('Capital Expenditure'), 
+            'drug_count': clicked_ticker_data.get('drug_count'),
+            'Stock_Trend_30d': clicked_ticker_data.get('Stock_Trend_30d'),
+            'Stock_Trend_60d': clicked_ticker_data.get('Stock_Trend_60d'), 
+            'NBI_Trend_30d':clicked_ticker_data.get('NBI_Trend_30d'), 
+            'NBI_Trend_60d': clicked_ticker_data.get('NBI_Trend_60d'),
+            'Forecasted NCAR20': clicked_ticker_data.get('NCAR20')
+        })}
+        2. Catalyst data:
+          {json.dumps({
+            'Catalyst': clicked_ticker_data.get('catalyst'),
+            'Polarity': clicked_ticker_data.get('polarity'),
+            'Drug name': clicked_ticker_data.get('drug_name'), 
+            'Indication': clicked_ticker_data.get('indication'), 
+            'Label': clicked_ticker_data.get('label'), 
+            'Stage': clicked_ticker_data.get('stage')
+          })}
+        3. Concise and specific trading action advice (Sell, Hold, Buy). Summarize ways to minimize risk.
+        """
+    try:
+        response = ollama.chat(
+            model = 'llama3.2',
+            messages = [
+                {
+                    'role': 'user',
+                    'content': prompt,
+                },
+            ]
+        )
+
+        return response['message']['content']
+    except Exception as e:
+        return f"Could not connect to LLM instance"
 
 # generate NCAR chart
 def generate_chart(clicked_ticker, df):
@@ -212,9 +265,10 @@ def generate_chart(clicked_ticker, df):
     fig, ax = plt.subplots(figsize = (15,10))
     ax.plot(x,y)
     ax.set_xticks(x)
-    ax.set_title("Forcasted Daily NCAR Trends", fontsize = 20)
-    ax.set_xlabel("Day After Catalyst", fontsize = 20)
+    ax.set_title("Forecasted Daily NCAR Trend", fontsize = 24)
+    ax.set_xlabel("Days After Catalyst", fontsize = 20)
     ax.set_ylabel("Normalized Cumulative Abnormal Return (NCAR)", fontsize = 20)
+    plt.ylim(-0.3, 0.3)
     buf = io.BytesIO()
     plt.savefig(buf, format='png',bbox_inches = 'tight')
     buf.seek(0)
@@ -263,7 +317,8 @@ def analytics():
 
 @app.route("/recommendations.html")    
 def recommendations():
-    return render_template('recommendations.html')
+    message_text = genAIanalysis(clicked_ticker, data) if clicked_ticker else None
+    return render_template('recommendations.html', text = message_text)
 
 @app.route("/")
 def index():
