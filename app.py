@@ -56,7 +56,7 @@ def endpoint():
 load_dotenv()
 api_key = os.getenv("api_key")
 # last_trading_day = (pd.Timestamp.now().normalize() - BDay(5)).strftime('%Y-%m-%d')
-last_trading_day = (pd.offsets.BDay().rollback(pd.Timestamp.now().normalize() - pd.Timedelta(days = 5))).strftime('%Y-%m-%d')
+last_trading_day = (pd.offsets.BDay().rollback(pd.Timestamp.now().normalize() - pd.Timedelta(days = 1))).strftime('%Y-%m-%d')
 
 print(f"Last trading day: {last_trading_day}")
 
