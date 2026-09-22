@@ -139,6 +139,7 @@ def trend(market_data_df, ticker, eventDate):
      
     # extract stock values at specified timepoints
     n=len(df)
+    closing_price = df.iloc[0]['Close'] if n>=1 else np.nan
     s0 = df.iloc[-1]['Close'] if n>=1 else np.nan
     s30 = df.iloc[-31]['Close'] if n>=31 else np.nan
     s60 = df.iloc[-61]['Close'] if n>=61 else np.nan
@@ -148,6 +149,7 @@ def trend(market_data_df, ticker, eventDate):
 
     # calculate trends
     return {
+        'Closing Price': closing_price,
         'Stock_Trend_30d': (s0-s30) / s30 if pd.notna(s30) and s30!=0 else np.nan,
         'Stock_Trend_60d': (s0-s60) / s60 if pd.notna(s60) and s60!=0 else np.nan,
         'NBI_Trend_30d': (n0-n30) / n30 if pd.notna(n30) and n30!=0 else np.nan,
@@ -195,7 +197,7 @@ data = pd.concat([data, preds_df], axis =1)
 if (len(data) >=5):
     data["NCAR20_quintiles"] = data["NCAR20"].transform(lambda x:pd.qcut(x, q=5, labels = [5,4,3,2,1]))
 else: 
-    print("Less than 5 catalysts for the last trading day")
+    print("Fewer than 5 catalysts for the last trading day")
 
 data_rows = data.to_dict(orient = "records")
 
@@ -285,13 +287,31 @@ def display_indicators(clicked_ticker):
         if item.get("company_ticker") == clicked_ticker:
             date = item.get('date', 'N/A')
             ticker = item.get('company_ticker', 'N/A')
+            company_name = item.get('company_name', 'N/A')
+            drug_name = item.get('drug_name', 'N/A')
+            nct_number = item.get('nct_number', 'N/A')
+            press_link = item.get('press_link', 'N/A')
+            polarity = item.get('polarity', 'N/A')
+            stage = item.get('stage', 'N/A')
             ncar20 = item.get('NCAR20')
             ncar20_quintile = item.get('NCAR20_quintiles', 'N/A')
+            closing_price = item.get('Closing Price', 'N/A')
+            stop_loss = closing_price * (1-0.13)
+            take_profit = closing_price * (1+0.25)
             lines = [{
                     "Catalyst Date": date, 
                     "Ticker": ticker, 
+                    "Company Name": company_name,
+                    "Drug Name": drug_name,
+                    "NCT Number": nct_number,
+                    "Press Link": press_link,
+                    "Sentiment Polarity": np.round(polarity,4),
+                    "Development Stage": stage,
                     "NCAR20": round(ncar20,4) if ncar20 is not None else 'N/A', 
-                    "NCAR20 Quintile": ncar20_quintile
+                    "NCAR20 Quintile": ncar20_quintile,
+                    "Closing Price On Catalyst Date": round(closing_price, 2),
+                    "Stop Loss Price": round(stop_loss, 2) if ncar20_quintile == 1 else 'N/A',
+                    "Take Profit Price": round(take_profit, 2) if ncar20_quintile == 1 else 'N/A',
             }]
             return lines
     return []
@@ -313,7 +333,13 @@ def display_catalysts():
 def analytics():
     chart = generate_chart(clicked_ticker, data) if clicked_ticker else None
     tableAnalytics = display_indicators(clicked_ticker)
-    return render_template('analytics.html', chart = chart, tableAnalytics = tableAnalytics)
+    # message_text = genAIanalysis(clicked_ticker, data) if clicked_ticker else None
+
+    return render_template('analytics.html', 
+    chart = chart, 
+    tableAnalytics = tableAnalytics, 
+    # text = message_text
+    )
 
 @app.route("/recommendations.html")    
 def recommendations():
