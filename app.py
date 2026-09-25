@@ -55,7 +55,7 @@ def endpoint():
 
 load_dotenv()
 api_key = os.getenv("api_key")
-# last_trading_day = (pd.Timestamp.now().normalize() - BDay(5)).strftime('%Y-%m-%d')
+# last_trading_day = (pd.Timestamp.now().normalize() - BDay(1)).strftime('%Y-%m-%d')
 last_trading_day = (pd.offsets.BDay().rollback(pd.Timestamp.now().normalize() - pd.Timedelta(days = 1))).strftime('%Y-%m-%d')
 
 print(f"Last trading day: {last_trading_day}")
@@ -93,8 +93,37 @@ data['polarity'] = [{s['label']:s['score'] for s in opt}['positive']-
 {s['label']:s['score'] for s in opt}['negative']
 for opt in output]
 
+### extract company features
+def getFinancialInfo(tickers):
+    financial_data = []
+    for ticker in tickers:
+        company = yf.Ticker(ticker)
+        row = {"ticker": ticker}
+        for statement in [company.financials, company.balance_sheet, company.cashflow]:
+            for col in statement.columns:
+                if col.year == 2024:
+                    row.update(statement[col])
+        financial_data.append(row)
+    financial_data = pd.DataFrame(financial_data).reindex(columns = 
+            ['ticker', 
+            'Total Revenue',  
+            'Operating Revenue',
+            'Cash And Cash Equivalents',
+            'Total Debt',
+            'Capital Expenditure'])
+    return financial_data
+
+company_features = getFinancialInfo(data['company_ticker']).dropna()
+
+data['date'] = pd.to_datetime(data['date'])
+
+drug_count = data[data['date'].dt.year.isin([2025])].groupby('company_ticker')['drug_name'].nunique()
+
+# map back to the df company table
+company_features['drug_count'] = data['company_ticker'].map(drug_count).fillna(0).astype(int)
+
 # merge with historical 2025 company features
-company_features = pd.read_csv("datasets/company_ds.csv")
+# company_features = pd.read_csv("datasets/company_ds.csv")
 
 data = pd.merge(
     data,
@@ -165,6 +194,8 @@ trends_df = pd.DataFrame([res if isinstance(res, dict) else {} for res in trends
 data = pd.concat([data, trends_df], axis = 1)
 
 # upload models
+def eval_rank_ic(*args, **kwargs):
+    pass
 models = joblib.load('xgb_models_1_to_20.joblib')
 
 # labels
@@ -194,8 +225,9 @@ preds_df = pd.DataFrame({f"NCAR{i}": model.predict(X_new) for i, model in enumer
 data = pd.concat([data, preds_df], axis =1)
 
 # quintile 1 is the highest
+
 if (len(data) >=5):
-    data["NCAR20_quintiles"] = data["NCAR20"].transform(lambda x:pd.qcut(x, q=5, labels = [5,4,3,2,1]))
+    data["NCAR20_quintiles"] = pd.qcut(data["NCAR20"].rank(method = "first"), q=5, labels = [5,4,3,2,1])
 else: 
     print("Fewer than 5 catalysts for the last trading day")
 
@@ -211,6 +243,7 @@ def genAIanalysis(clicked_ticker, data):
 
     prompt =  f"""
         You are an expert biotech investment analyst. Analyze this data for {company_name}:
+        Do not show actual figure estimates (dollar amounts etc.). I have separate view for that.
         1. Financial data: 
         
         {json.dumps({
