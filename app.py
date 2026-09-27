@@ -161,8 +161,8 @@ def trend(market_data_df, ticker, eventDate):
             'Stock_Trend_30d': np.nan,
             'Stock_Trend_60d': np.nan,
             'NBI_Trend_30d': np.nan,
-            'NBI_Trend_60d': np.nan,
-            'isDelisted': 1
+            'NBI_Trend_60d': np.nan
+            # 'isDelisted': 1
     }
 
      
@@ -182,8 +182,8 @@ def trend(market_data_df, ticker, eventDate):
         'Stock_Trend_30d': (s0-s30) / s30 if pd.notna(s30) and s30!=0 else np.nan,
         'Stock_Trend_60d': (s0-s60) / s60 if pd.notna(s60) and s60!=0 else np.nan,
         'NBI_Trend_30d': (n0-n30) / n30 if pd.notna(n30) and n30!=0 else np.nan,
-        'NBI_Trend_60d': (n0-n60) / n60 if pd.notna(n60) and n60!=0 else np.nan,
-        'isDelisted': pd.isna(s30) or pd.isna(s60)
+        'NBI_Trend_60d': (n0-n60) / n60 if pd.notna(n60) and n60!=0 else np.nan
+        # 'isDelisted': pd.isna(s30) or pd.isna(s60)
     }
 
 trends_res = [trend(market_data_df, ticker, date)
@@ -200,16 +200,17 @@ models = joblib.load('xgb_models_1_to_20.joblib')
 
 # labels
 features = ['polarity',
-            'drug_count',
+            # 'drug_count',
             'Total Revenue', 
             'Operating Revenue', 
             'Cash And Cash Equivalents', 
             'Capital Expenditure', 
             'Stock_Trend_30d', 
             'Stock_Trend_60d',
-            'NBI_Trend_30d', 
-            'NBI_Trend_60d',
-            'isDelisted']
+            # 'NBI_Trend_30d', 
+            'NBI_Trend_60d'
+            # 'isDelisted'
+            ]
 
 for c in features:
     if data[c].dtype == 'object':
@@ -218,7 +219,7 @@ for c in features:
 # new data
 X_new = data[features].copy()
 # X_new['stage'] = X_new['stage'].astype("category")
-X_new['isDelisted'] = X_new['isDelisted'].astype(int)
+# X_new['isDelisted'] = X_new['isDelisted'].astype(int)
 
 # run regressor predictions
 preds_df = pd.DataFrame({f"NCAR{i}": model.predict(X_new) for i, model in enumerate(models.values(), start=1)})
@@ -252,10 +253,10 @@ def genAIanalysis(clicked_ticker, data):
             'Cash And Cash Equivalents':clicked_ticker_data.get('Cash And Cash Equivalents'),
             'Total Debt': clicked_ticker_data.get('Total Debt'), 
             'Capital Expenditure': clicked_ticker_data.get('Capital Expenditure'), 
-            'drug_count': clicked_ticker_data.get('drug_count'),
+            # 'drug_count': clicked_ticker_data.get('drug_count'),
             'Stock_Trend_30d': clicked_ticker_data.get('Stock_Trend_30d'),
             'Stock_Trend_60d': clicked_ticker_data.get('Stock_Trend_60d'), 
-            'NBI_Trend_30d':clicked_ticker_data.get('NBI_Trend_30d'), 
+            # 'NBI_Trend_30d':clicked_ticker_data.get('NBI_Trend_30d'), 
             'NBI_Trend_60d': clicked_ticker_data.get('NBI_Trend_60d'),
             'Forecasted NCAR20': clicked_ticker_data.get('NCAR20')
         })}
@@ -329,8 +330,8 @@ def display_indicators(clicked_ticker):
             ncar20 = item.get('NCAR20')
             ncar20_quintile = item.get('NCAR20_quintiles', 'N/A')
             closing_price = item.get('Closing Price', 'N/A')
-            stop_loss = closing_price * (1-0.13)
-            take_profit = closing_price * (1+0.25)
+            stop_loss = closing_price * (1-0.28)
+            take_profit = closing_price * (1+0.4)
             lines = [{
                     "Catalyst Date": date, 
                     "Ticker": ticker, 
