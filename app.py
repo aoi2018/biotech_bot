@@ -52,11 +52,12 @@ def endpoint():
     return clicked_ticker
 
 # new day catalyst import
-
 load_dotenv()
 api_key = os.getenv("api_key")
-# last_trading_day = (pd.Timestamp.now().normalize() - BDay(1)).strftime('%Y-%m-%d')
-last_trading_day = (pd.offsets.BDay().rollback(pd.Timestamp.now().normalize() - pd.Timedelta(days = 1))).strftime('%Y-%m-%d')
+
+# modify days_lookback manually and rerun the app to pull in another day's catalysts
+days_lookback = 1
+last_trading_day = (pd.offsets.BDay().rollback(pd.Timestamp.now().normalize() - pd.Timedelta(days = days_lookback))).strftime('%Y-%m-%d')
 
 print(f"Last trading day: {last_trading_day}")
 
@@ -93,7 +94,7 @@ data['polarity'] = [{s['label']:s['score'] for s in opt}['positive']-
 {s['label']:s['score'] for s in opt}['negative']
 for opt in output]
 
-### extract company features
+# extract company features
 def getFinancialInfo(tickers):
     financial_data = []
     for ticker in tickers:
@@ -117,14 +118,15 @@ company_features = getFinancialInfo(data['company_ticker']).dropna()
 
 data['date'] = pd.to_datetime(data['date'])
 
-drug_count = data[data['date'].dt.year.isin([2025])].groupby('company_ticker')['drug_name'].nunique()
+# drug_count = data[data['date'].dt.year.isin([2025])].groupby('company_ticker')['drug_name'].nunique()
 
 # map back to the df company table
-company_features['drug_count'] = data['company_ticker'].map(drug_count).fillna(0).astype(int)
+# company_features['drug_count'] = data['company_ticker'].map(drug_count).fillna(0).astype(int)
 
-# merge with historical 2025 company features
+# merge with historical company features
 # company_features = pd.read_csv("datasets/company_ds.csv")
 
+# merge with company financial statement data
 data = pd.merge(
     data,
     company_features,
@@ -186,6 +188,7 @@ def trend(market_data_df, ticker, eventDate):
         # 'isDelisted': pd.isna(s30) or pd.isna(s60)
     }
 
+# add trend indicators to the dataset
 trends_res = [trend(market_data_df, ticker, date)
                           for ticker, date in zip(data['company_ticker'], 
                                                   data['date'])]
@@ -237,7 +240,7 @@ data_rows = data.to_dict(orient = "records")
 print(data.columns)
 # print(data_rows)
 
-# local LLM function
+# local LM function
 def genAIanalysis(clicked_ticker, data):
     clicked_ticker_data = data[data['company_ticker'] == clicked_ticker].to_dict(orient = 'records')[0]
     company_name = clicked_ticker_data.get('company_name')
@@ -253,10 +256,8 @@ def genAIanalysis(clicked_ticker, data):
             'Cash And Cash Equivalents':clicked_ticker_data.get('Cash And Cash Equivalents'),
             'Total Debt': clicked_ticker_data.get('Total Debt'), 
             'Capital Expenditure': clicked_ticker_data.get('Capital Expenditure'), 
-            # 'drug_count': clicked_ticker_data.get('drug_count'),
             'Stock_Trend_30d': clicked_ticker_data.get('Stock_Trend_30d'),
-            'Stock_Trend_60d': clicked_ticker_data.get('Stock_Trend_60d'), 
-            # 'NBI_Trend_30d':clicked_ticker_data.get('NBI_Trend_30d'), 
+            'Stock_Trend_60d': clicked_ticker_data.get('Stock_Trend_60d'),  
             'NBI_Trend_60d': clicked_ticker_data.get('NBI_Trend_60d'),
             'Forecasted NCAR20': clicked_ticker_data.get('NCAR20')
         })}
@@ -304,7 +305,7 @@ def generate_chart(clicked_ticker, df):
     ax.set_title("Forecasted Daily NCAR Trend", fontsize = 24)
     ax.set_xlabel("Days After Catalyst", fontsize = 20)
     ax.set_ylabel("Normalized Cumulative Abnormal Return (NCAR)", fontsize = 20)
-    plt.ylim(-0.3, 0.3)
+    ax.margins(y=0.1)
     buf = io.BytesIO()
     plt.savefig(buf, format='png',bbox_inches = 'tight')
     buf.seek(0)
@@ -371,7 +372,7 @@ def analytics():
 
     return render_template('analytics.html', 
     chart = chart, 
-    tableAnalytics = tableAnalytics, 
+    tableAnalytics = tableAnalytics
     # text = message_text
     )
 
